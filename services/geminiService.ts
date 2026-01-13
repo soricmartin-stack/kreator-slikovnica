@@ -10,14 +10,19 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /**
  * Robustly handles API calls with exponential backoff for 429 and 5xx errors.
  */
-async function callWithRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+async function callWithRetry<T>(fn: () => Promise<T>, retries = 4, delay = 5000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
-    const isRetryable = error.message?.includes('429') || error.message?.includes('500') || error.message?.includes('503') || error.status === 429;
+    const errorMsg = error.message || String(error);
+    const isRetryable = errorMsg.includes('429') || 
+                        errorMsg.includes('500') || 
+                        errorMsg.includes('503') || 
+                        errorMsg.includes('RESOURCE_EXHAUSTED') ||
+                        error.status === 429;
     
     if (retries > 0 && isRetryable) {
-      console.warn(`API error detected. Retrying in ${delay}ms... (${retries} retries left)`);
+      console.warn(`Architect Quota/Rate limit detected. Retrying in ${delay}ms... (${retries} retries left)`);
       await sleep(delay);
       return callWithRetry(fn, retries - 1, delay * 2);
     }
@@ -107,11 +112,25 @@ export const generateCharacterSheet = async (
       .map(([k, v]) => `${k}: ${v}`)
       .join(", ");
 
-    const prompt = `Character Sheet for ${character.name}. Basic Concept: ${character.description}. ${tweakStr ? `Specific features: ${tweakStr}.` : ""} Professional reference sheet showing front, side, and back views, solid white background, ${tone} tone, ${styleTags}. High quality character design.`;
+    const textPrompt = `Character Sheet for ${character.name}. Basic Concept: ${character.description}. ${tweakStr ? `Specific features: ${tweakStr}.` : ""} Professional reference sheet showing front, side, and back views, solid white background, ${tone} tone, ${styleTags}. High quality character design. Use the attached image as the base reference for features and clothing.`;
     
+    const parts: any[] = [{ text: textPrompt }];
+    
+    if (character.uploadUrl) {
+      const matches = character.uploadUrl.match(/^data:(image\/[a-z]+);base64,(.+)$/);
+      if (matches) {
+        parts.unshift({
+          inlineData: {
+            mimeType: matches[1],
+            data: matches[2]
+          }
+        });
+      }
+    }
+
     const response = await ai.models.generateContent({
       model: DEFAULT_MODELS.image,
-      contents: { parts: [{ text: prompt }] },
+      contents: { parts },
       config: {
         imageConfig: { aspectRatio: "1:1" }
       }
@@ -156,7 +175,7 @@ export const generateSceneImage = async (
       model: DEFAULT_MODELS.image,
       contents: { parts: [{ text: prompt }] },
       config: {
-        imageConfig: { aspectRatio: "4:3" }
+        imageConfig: { aspectRatio: "16:9" }
       }
     });
 

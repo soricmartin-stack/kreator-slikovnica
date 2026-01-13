@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { analyzeStory, generateCharacterSheet, generateSceneImage } from './services/geminiService';
 import { StoryParams, Character, Scene, AppStep, AgeGroup, SceneSliders, CharacterTweaks } from './types';
 import { AGE_STYLE_TAGS, DEFAULT_MODELS } from './constants';
@@ -23,13 +23,15 @@ const App: React.FC = () => {
     tone: 5, excitement: 5, happiness: 5, energy: 5, tension: 5
   });
 
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
   const incrementUsage = () => setSessionUsage(prev => prev + 1);
 
   const handleError = (error: any) => {
     console.error(error);
     const msg = error.message || String(error);
     if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-      setErrorMessage("Architect Quota Exceeded. Gemini API limits reached (approx 1,500 images/day or 15/min). Please wait a moment for the window to reset.");
+      setErrorMessage("Architect Quota Exceeded. The Free Tier of the Gemini API allows approximately 15 images per minute. We are retrying automatically with delays, but if this persists, please wait 60 seconds or check your project billing status at ai.google.dev/gemini-api/docs/billing");
     } else {
       setErrorMessage("An unexpected error occurred: " + msg.substring(0, 100));
     }
@@ -71,6 +73,18 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUploadPhoto = (charId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setCharacters(prev => prev.map(c => c.id === charId ? { ...c, uploadUrl: result } : c));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const updateCharacterTweaks = (charId: string, field: keyof CharacterTweaks, value: string) => {
     setCharacters(prev => prev.map(c => c.id === charId ? {
       ...c, tweaks: { ...c.tweaks, [field]: value }
@@ -88,7 +102,7 @@ const App: React.FC = () => {
         const imageUrl = await generateSceneImage(scene, characters, params.tone, AGE_STYLE_TAGS[params.ageGroup]);
         setScenes(prev => prev.map(s => s.id === scene.id ? { ...s, imageUrl, isGenerating: false } : s));
         incrementUsage();
-        await new Promise(r => setTimeout(r, 1200));
+        await new Promise(r => setTimeout(r, 4500));
       }
     } catch (error) {
       handleError(error);
@@ -142,22 +156,36 @@ const App: React.FC = () => {
     setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, storyText: text } : s));
   };
 
-  const downloadImage = (url: string, filename: string) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
+  const compressAndDownload = async (url: string, filename: string) => {
+    return new Promise<void>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve();
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = filename;
+        link.click();
+        resolve();
+      };
+      img.src = url;
+    });
   };
 
-  const downloadAll = () => {
+  const downloadAll = async () => {
     const generatedScenes = scenes.filter(s => !!s.imageUrl);
     if (generatedScenes.length === 0) return;
     
-    generatedScenes.forEach((scene, index) => {
-      setTimeout(() => {
-        downloadImage(scene.imageUrl!, `page-${index + 1}.png`);
-      }, index * 400); // Slower interval to prevent browser block
-    });
+    for (let i = 0; i < generatedScenes.length; i++) {
+      const scene = generatedScenes[i];
+      await compressAndDownload(scene.imageUrl!, `page-${i + 1}.jpg`);
+      await new Promise(r => setTimeout(r, 400));
+    }
   };
 
   const isCharacterGenerating = characters.some(c => c.isGenerating);
@@ -165,7 +193,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
-      {/* PERSISTENT STATUS & QUOTA BAR */}
       <div className="bg-slate-900 text-slate-300 text-[10px] font-bold uppercase tracking-widest py-1 px-4 flex justify-between items-center sticky top-0 z-[60] border-b border-white/10 backdrop-blur-md">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-2">
@@ -174,7 +201,7 @@ const App: React.FC = () => {
           </span>
           <span className="opacity-20">|</span>
           <span className="flex items-center gap-2">
-            Tool: Nano Banana (Gen 2.5)
+            Format: 16:9 Widescreen
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -205,7 +232,6 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* WHIMSICAL CHARACTER GENERATION LOADER */}
       {isCharacterGenerating && (
         <div className="fixed inset-0 z-[100] bg-white/90 backdrop-blur-xl flex flex-col items-center justify-center animate-in fade-in duration-500">
           <div className="w-64 h-64 relative mb-8">
@@ -232,10 +258,10 @@ const App: React.FC = () => {
           <div className="mb-8 p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-lg shadow-sm animate-in fade-in slide-in-from-top-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                <p className="font-bold text-sm">{errorMessage}</p>
+                <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                <p className="font-bold text-sm leading-snug">{errorMessage}</p>
               </div>
-              <button onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-rose-600">
+              <button onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-rose-600 ml-4 flex-shrink-0">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
               </button>
             </div>
@@ -245,25 +271,59 @@ const App: React.FC = () => {
         {step === AppStep.Input && (
           <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center">
-              <h2 className="text-4xl font-extrabold text-slate-900 mb-4 tracking-tight">Craft Your Story</h2>
-              <p className="text-lg text-slate-600 italic font-handwriting">Sequential generation with visual and narrative consistency.</p>
+              <h2 className="text-4xl font-extrabold text-slate-900 mb-2 tracking-tight">Project Brief</h2>
+              <p className="text-lg text-slate-600 italic font-handwriting">Specify your narrative and artistic constraints.</p>
             </div>
             <form onSubmit={handleStartAnalysis} className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Full Story Narrative</label>
-                <textarea className="w-full h-48 px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none resize-none transition-all" value={params.story} onChange={e => setParams({ ...params, story: e.target.value })} required placeholder="Once upon a time..." />
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Story Text (The Blueprint)</label>
+                <textarea 
+                  className="w-full h-48 px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none resize-none transition-all" 
+                  value={params.story} 
+                  onChange={e => setParams({ ...params, story: e.target.value })} 
+                  required 
+                  placeholder="Paste your full story narrative here..." 
+                />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div><label className="block text-sm font-semibold text-slate-700 mb-2">Age Group</label>
-                <select className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none bg-white" value={params.ageGroup} onChange={e => setParams({ ...params, ageGroup: e.target.value as AgeGroup })}>
-                  <option value="2-4">Toddler (2-4)</option><option value="5-7">Early Reader (5-7)</option><option value="8-10">Storyteller (8-10)</option>
-                </select></div>
-                <div><label className="block text-sm font-semibold text-slate-700 mb-2">Primary Tone</label>
-                <input type="text" className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none" placeholder="Magical..." value={params.tone} onChange={e => setParams({ ...params, tone: e.target.value })} /></div>
-                <div><label className="block text-sm font-semibold text-slate-700 mb-2">Length (Pages)</label>
-                <input type="number" min="20" max="40" className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none" value={params.sceneCount} onChange={e => setParams({ ...params, sceneCount: parseInt(e.target.value) })} /></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Target Age Group</label>
+                  <select 
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none bg-white" 
+                    value={params.ageGroup} 
+                    onChange={e => setParams({ ...params, ageGroup: e.target.value as AgeGroup })}
+                  >
+                    <option value="2-4">Toddler (2-4 years)</option>
+                    <option value="5-7">Early Reader (5-7 years)</option>
+                    <option value="8-10">Intermediate (8-10 years)</option>
+                    <option value="Adult">Adult / Mature Audience</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Length (Pages)</label>
+                  <input 
+                    type="number" 
+                    min="5" 
+                    max="40" 
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none" 
+                    value={params.sceneCount} 
+                    onChange={e => setParams({ ...params, sceneCount: parseInt(e.target.value) })} 
+                  />
+                </div>
               </div>
-              <button type="submit" disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-100">Initialize Architect</button>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Artistic Tone (e.g. Noir, Whimsical, Cyberpunk)</label>
+                <input 
+                  type="text" 
+                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none" 
+                  placeholder="Whimsical, Noir, Watercolor, Sci-Fi..." 
+                  value={params.tone} 
+                  onChange={e => setParams({ ...params, tone: e.target.value })} 
+                />
+              </div>
+              <button type="submit" disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-100">
+                Initialize Construction
+              </button>
             </form>
           </div>
         )}
@@ -271,25 +331,70 @@ const App: React.FC = () => {
         {step === AppStep.Analysis && (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-500 font-handwriting">Breaking down narrative beats...</p>
+            <p className="text-slate-500 font-handwriting">Deconstructing narrative for visual staging...</p>
           </div>
         )}
 
         {step === AppStep.Characters && (
           <div className="space-y-10 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
-              <div><h2 className="text-3xl font-bold">Character Design Studio</h2><p className="text-slate-500">Fine-tune the cast before building the book.</p></div>
+              <div><h2 className="text-3xl font-bold">Character Design Studio</h2><p className="text-slate-500">Upload a reference photo or generate a unique cast for your book.</p></div>
               <button onClick={generateAllScenes} disabled={loading || characters.some(c => !c.sheetUrl)} className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 shadow-lg shadow-emerald-50">Generate All Book Pages</button>
             </div>
             <div className="space-y-12">
               {characters.map((char) => (
                 <div key={char.id} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col lg:flex-row gap-10">
                   <div className="lg:w-1/3 flex flex-col items-center gap-4">
-                    <div className="w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden border border-slate-200 relative flex items-center justify-center">
-                      {char.sheetUrl ? <img src={char.sheetUrl} className="w-full h-full object-cover" alt={char.name} /> : 
-                      <div className="text-center px-6">{char.isGenerating ? <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div> : <span className="text-slate-400 italic font-handwriting">Reference Required</span>}</div>}
+                    <div className="flex gap-4 w-full h-full">
+                      <div className="w-1/2 aspect-square bg-slate-50 rounded-2xl overflow-hidden border border-slate-200 relative flex items-center justify-center">
+                        {char.uploadUrl ? (
+                          <img src={char.uploadUrl} className="w-full h-full object-cover" alt="Uploaded Reference" />
+                        ) : (
+                          <div className="text-center px-4">
+                            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest block mb-2">Upload Reference</span>
+                            <button onClick={() => fileInputRefs.current[char.id]?.click()} className="p-2 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition-all">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                            </button>
+                          </div>
+                        )}
+                        <input 
+                          type="file" 
+                          ref={el => fileInputRefs.current[char.id] = el}
+                          className="hidden" 
+                          accept="image/*" 
+                          onChange={(e) => handleUploadPhoto(char.id, e)} 
+                        />
+                        {char.uploadUrl && (
+                          <button 
+                            onClick={() => setCharacters(prev => prev.map(c => c.id === char.id ? { ...c, uploadUrl: undefined } : c))}
+                            className="absolute top-2 right-2 p-1 bg-white/80 rounded-full text-rose-600 hover:bg-white"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="w-1/2 aspect-square bg-slate-50 rounded-2xl overflow-hidden border border-slate-200 relative flex items-center justify-center">
+                        {char.sheetUrl ? <img src={char.sheetUrl} className="w-full h-full object-cover" alt={char.name} /> : 
+                        <div className="text-center px-6">{char.isGenerating ? <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div> : <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest italic">Reference Sheet</span>}</div>}
+                      </div>
                     </div>
-                    <button onClick={() => handleGenerateCharacter(char.id)} disabled={loading} className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all">Generate Character Sheet</button>
+                    
+                    <div className="flex gap-2 w-full">
+                      <button 
+                        onClick={() => fileInputRefs.current[char.id]?.click()} 
+                        className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-all text-xs"
+                      >
+                        {char.uploadUrl ? 'Change Photo' : 'Upload Photo'}
+                      </button>
+                      <button 
+                        onClick={() => handleGenerateCharacter(char.id)} 
+                        disabled={loading} 
+                        className="flex-[1.5] py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all text-xs"
+                      >
+                        {char.sheetUrl ? 'Regenerate Sheet' : 'Generate Sheet'}
+                      </button>
+                    </div>
                   </div>
                   <div className="lg:w-2/3 space-y-6">
                     <div><h3 className="text-2xl font-bold text-indigo-900 mb-2">{char.name}</h3><p className="text-slate-600 text-sm leading-relaxed">{char.description}</p></div>
@@ -312,7 +417,7 @@ const App: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>
                 <h2 className="text-3xl font-bold font-handwriting">Book Storyboard</h2>
-                <p className="text-slate-500">Edit page text and regenerate images from narrative or visual prompts.</p>
+                <p className="text-slate-500">Widescreen 16:9 pages optimized for web display.</p>
               </div>
               <div className="flex flex-wrap gap-4">
                 <button 
@@ -321,7 +426,7 @@ const App: React.FC = () => {
                   className={`px-8 py-3 rounded-2xl font-bold transition-all flex items-center gap-3 shadow-xl ${allImagesReady ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-100' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-slate-100'}`}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  {allImagesReady ? 'Download Full Book' : 'Download Available Pages'}
+                  {allImagesReady ? 'Download Full Book (Optimized)' : 'Download Available Pages'}
                 </button>
                 <button onClick={() => window.location.reload()} className="px-6 py-3 bg-slate-200 text-slate-700 rounded-2xl font-bold hover:bg-slate-300 transition-all">Start Over</button>
               </div>
@@ -334,15 +439,15 @@ const App: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="font-bold text-emerald-900">Your Masterpiece is Ready!</h4>
-                  <p className="text-sm text-emerald-700">All {scenes.length} pages have been illustrated. You can now download them as a collection.</p>
+                  <p className="text-sm text-emerald-700">All {scenes.length} widescreen pages have been illustrated and optimized (&lt; 2MB per page).</p>
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
               {scenes.map((scene, idx) => (
                 <div key={scene.id} className="group bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-200 flex flex-col h-full ring-1 ring-transparent hover:ring-indigo-300 transition-all">
-                  <div className="aspect-[4/3] bg-slate-50 relative border-b border-slate-100 overflow-hidden">
+                  <div className="aspect-video bg-slate-50 relative border-b border-slate-100 overflow-hidden">
                     {scene.imageUrl ? (
                       <>
                         <img src={scene.imageUrl} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-1000" alt={`Page ${idx+1}`} />
@@ -355,7 +460,7 @@ const App: React.FC = () => {
                             <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
                             <span className="text-[8px] font-bold text-indigo-800 uppercase">Studio</span>
                           </button>
-                          <button onClick={() => downloadImage(scene.imageUrl!, `page-${idx+1}.png`)} className="bg-white p-2 rounded-lg flex flex-col items-center gap-1 hover:bg-slate-50 transition-colors">
+                          <button onClick={() => compressAndDownload(scene.imageUrl!, `page-${idx+1}.jpg`)} className="bg-white p-2 rounded-lg flex flex-col items-center gap-1 hover:bg-slate-50 transition-colors">
                             <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                             <span className="text-[8px] font-bold text-slate-800 uppercase">Save</span>
                           </button>
@@ -389,7 +494,7 @@ const App: React.FC = () => {
 
       {activeEditingScene && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-3xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+          <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Scene {activeEditingScene.id} Studio</h3>
@@ -401,7 +506,7 @@ const App: React.FC = () => {
             </div>
             <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-10">
               <div className="space-y-6">
-                <div className="aspect-[4/3] rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-inner bg-slate-50 relative">
+                <div className="aspect-video rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-inner bg-slate-50 relative">
                   {activeEditingScene.imageUrl && <img src={activeEditingScene.imageUrl} className="w-full h-full object-cover" alt="Current scene" />}
                   {activeEditingScene.isGenerating && (
                     <div className="absolute inset-0 bg-white/60 flex items-center justify-center backdrop-blur-sm">

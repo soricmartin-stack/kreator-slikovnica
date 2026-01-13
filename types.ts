@@ -1,5 +1,5 @@
 
-export type AgeGroup = '2-4' | '5-7' | '8-10';
+export type AgeGroup = '2-4' | '5-7' | '8-10' | 'Adult';
 
 export interface CharacterTweaks {
   hair: string;
@@ -14,6 +14,7 @@ export interface Character {
   name: string;
   description: string;
   sheetUrl?: string;
+  uploadUrl?: string; // New field for user uploaded reference photo
   isGenerating?: boolean;
   tweaks: CharacterTweaks;
 }

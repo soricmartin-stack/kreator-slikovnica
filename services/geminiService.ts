@@ -48,7 +48,7 @@ export const analyzeStory = async (
 
     const response = await ai.models.generateContent({
       model: DEFAULT_MODELS.text,
-      contents: `Analyze this story and prepare it for illustration.
+      contents: `Analyze this story and prepare it for illustration on horizontal smartphone screens.
       
       Instructions:
       1. ${countInstruction}
@@ -184,7 +184,7 @@ export const generateSceneImage = async (
     }
 
     const primaryPrompt = useStoryText ? scene.storyText : scene.description;
-    const prompt = `CHILDREN'S BOOK ILLUSTRATION. Scene focus: ${primaryPrompt}. Characters present: ${characterContext}. Style: ${tone}, ${styleTags}.${sliderContext} Consistent character appearances. 4K quality.`;
+    const prompt = `HORIZONTAL SMARTPHONE ILLUSTRATION. Optimized for horizontal mobile screen. Scene focus: ${primaryPrompt}. Characters present: ${characterContext}. Style: ${tone}, ${styleTags}.${sliderContext} Consistent character appearances. Professional illustration quality.`;
 
     const response = await ai.models.generateContent({
       model: DEFAULT_MODELS.image,

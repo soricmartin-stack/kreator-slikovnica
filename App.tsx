@@ -46,7 +46,6 @@ const App: React.FC = () => {
     try {
       const { scenes, characters, determinedTone, determinedCount } = await analyzeStory(params.story, params.sceneCount, params.tone);
       
-      // Update params with determined metadata if it was auto
       setParams(prev => ({
         ...prev,
         tone: determinedTone,
@@ -174,6 +173,7 @@ const App: React.FC = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve();
         ctx.drawImage(img, 0, 0);
+        // Using 0.8 quality and JPEG format to ensure the image stays under 2MB.
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         const link = document.createElement('a');
         link.href = dataUrl;
@@ -222,7 +222,7 @@ const App: React.FC = () => {
           </span>
           <span className="opacity-20">|</span>
           <span className="flex items-center gap-2">
-            Format: 16:9 Widescreen
+            Format: Horizontal Smartphone (16:9)
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -376,7 +376,7 @@ const App: React.FC = () => {
         {step === AppStep.Analysis && (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-500 font-handwriting">Deconstructing narrative for visual staging...</p>
+            <p className="text-slate-500 font-handwriting">Deconstructing narrative for horizontal smartphone layout...</p>
           </div>
         )}
 
@@ -468,7 +468,7 @@ const App: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>
                 <h2 className="text-3xl font-bold font-handwriting">Book Storyboard</h2>
-                <p className="text-slate-500">Widescreen 16:9 pages optimized for web display.</p>
+                <p className="text-slate-500">Horizontal Smartphone layout optimized for 16:9 displays.</p>
               </div>
               <div className="flex flex-wrap gap-4">
                 <button 
@@ -497,7 +497,7 @@ const App: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="font-bold text-emerald-900">Your Masterpiece is Ready!</h4>
-                  <p className="text-sm text-emerald-700">All {scenes.length} widescreen pages have been illustrated and optimized (&lt; 2MB per page).</p>
+                  <p className="text-sm text-emerald-700">All {scenes.length} pages have been illustrated and optimized (less than 2MB per page).</p>
                 </div>
               </div>
             )}
@@ -556,7 +556,7 @@ const App: React.FC = () => {
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Scene {activeEditingScene.id} Studio</h3>
-                <p className="text-xs text-slate-500">Fine-tune the narrative and atmosphere.</p>
+                <p className="text-xs text-slate-500">Fine-tune for horizontal view.</p>
               </div>
               <button onClick={() => setActiveEditingScene(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-full transition-all">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>

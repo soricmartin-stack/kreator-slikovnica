@@ -173,13 +173,20 @@ const App: React.FC = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve();
         ctx.drawImage(img, 0, 0);
-        // Using 0.8 quality and JPEG format to ensure the image stays under 2MB.
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        const link = document.createElement('a');
-        link.href = dataUrl;
-        link.download = filename;
-        link.click();
-        resolve();
+        
+        // Target 95% quality to ensure a substantial file size (min 500KB)
+        // for professional-grade horizontal illustrations, while staying under 2MB.
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(blobUrl);
+          }
+          resolve();
+        }, 'image/jpeg', 0.95);
       };
       img.src = url;
     });

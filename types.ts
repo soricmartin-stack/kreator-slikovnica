@@ -39,8 +39,8 @@ export interface Scene {
 export interface StoryParams {
   story: string;
   ageGroup: AgeGroup;
-  tone: string;
-  sceneCount: number;
+  tone: string | 'auto';
+  sceneCount: number | 'auto';
 }
 
 export enum AppStep {

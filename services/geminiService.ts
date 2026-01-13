@@ -32,18 +32,31 @@ async function callWithRetry<T>(fn: () => Promise<T>, retries = 4, delay = 5000)
 
 export const analyzeStory = async (
   story: string,
-  sceneCount: number
-): Promise<{ scenes: Scene[]; characters: Character[] }> => {
+  sceneCount: number | 'auto',
+  tone: string | 'auto'
+): Promise<{ scenes: Scene[]; characters: Character[]; determinedTone: string; determinedCount: number }> => {
   return callWithRetry(async () => {
     const ai = getAI();
+    
+    const countInstruction = sceneCount === 'auto' 
+      ? "Decide on an appropriate number of sequential book pages (between 5 and 40) based on the story length and emotional arc."
+      : `Break the story down into exactly ${sceneCount} sequential book pages.`;
+    
+    const toneInstruction = tone === 'auto'
+      ? "Determine an appropriate artistic tone (e.g., whimsical, noir, watercolor, cinematic) that fits the story's soul."
+      : `The artistic tone for this book is "${tone}".`;
+
     const response = await ai.models.generateContent({
       model: DEFAULT_MODELS.text,
-      contents: `Analyze this children's story and break it down into exactly ${sceneCount} sequential book pages.
-      For each page, provide:
-      1. "storyText": The actual text to be printed on the page.
-      2. "description": A detailed visual description for an illustrator (camera angle, lighting, character actions).
+      contents: `Analyze this story and prepare it for illustration.
       
-      Also identify recurring main characters.
+      Instructions:
+      1. ${countInstruction}
+      2. ${toneInstruction}
+      3. For each page, provide:
+         - "storyText": The text to be printed on the page.
+         - "description": A detailed visual description for an illustrator.
+      4. Identify all recurring main characters.
       
       Story: ${story}
       
@@ -53,6 +66,8 @@ export const analyzeStory = async (
         responseSchema: {
           type: Type.OBJECT,
           properties: {
+            determinedTone: { type: Type.STRING, description: "The artistic tone used or determined for the book." },
+            determinedCount: { type: Type.INTEGER, description: "The number of pages generated." },
             scenes: {
               type: Type.ARRAY,
               items: {
@@ -78,7 +93,7 @@ export const analyzeStory = async (
               }
             }
           },
-          required: ["scenes", "characters"]
+          required: ["scenes", "characters", "determinedTone", "determinedCount"]
         }
       }
     });

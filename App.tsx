@@ -12,8 +12,8 @@ const App: React.FC = () => {
   const [params, setParams] = useState<StoryParams>({
     story: '',
     ageGroup: '5-7',
-    tone: 'whimsical',
-    sceneCount: 20
+    tone: 'auto',
+    sceneCount: 'auto'
   });
   
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -44,7 +44,15 @@ const App: React.FC = () => {
     setErrorMessage(null);
     setStep(AppStep.Analysis);
     try {
-      const { scenes, characters } = await analyzeStory(params.story, params.sceneCount);
+      const { scenes, characters, determinedTone, determinedCount } = await analyzeStory(params.story, params.sceneCount, params.tone);
+      
+      // Update params with determined metadata if it was auto
+      setParams(prev => ({
+        ...prev,
+        tone: determinedTone,
+        sceneCount: determinedCount
+      }));
+
       setScenes(scenes.map(s => ({
         ...s, sliders: { tone: 5, excitement: 5, happiness: 5, energy: 5, tension: 5 }
       })));
@@ -64,7 +72,7 @@ const App: React.FC = () => {
     setErrorMessage(null);
     setCharacters(prev => prev.map(c => c.id === charId ? { ...c, isGenerating: true } : c));
     try {
-      const sheetUrl = await generateCharacterSheet(char, params.tone, AGE_STYLE_TAGS[params.ageGroup]);
+      const sheetUrl = await generateCharacterSheet(char, params.tone as string, AGE_STYLE_TAGS[params.ageGroup]);
       setCharacters(prev => prev.map(c => c.id === charId ? { ...c, sheetUrl, isGenerating: false } : c));
       incrementUsage();
     } catch (error) {
@@ -99,7 +107,7 @@ const App: React.FC = () => {
       for (const scene of scenes) {
         if (scene.imageUrl) continue;
         setScenes(prev => prev.map(s => s.id === scene.id ? { ...s, isGenerating: true } : s));
-        const imageUrl = await generateSceneImage(scene, characters, params.tone, AGE_STYLE_TAGS[params.ageGroup]);
+        const imageUrl = await generateSceneImage(scene, characters, params.tone as string, AGE_STYLE_TAGS[params.ageGroup]);
         setScenes(prev => prev.map(s => s.id === scene.id ? { ...s, imageUrl, isGenerating: false } : s));
         incrementUsage();
         await new Promise(r => setTimeout(r, 4500));
@@ -118,7 +126,7 @@ const App: React.FC = () => {
     setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isGenerating: true } : s));
     try {
       const imageUrl = await generateSceneImage(
-        scene, characters, params.tone, AGE_STYLE_TAGS[params.ageGroup], 
+        scene, characters, params.tone as string, AGE_STYLE_TAGS[params.ageGroup], 
         scene.sliders, useStoryText
       );
       setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, imageUrl, isGenerating: false } : s));
@@ -140,7 +148,7 @@ const App: React.FC = () => {
       const scene = scenes.find(s => s.id === sceneId)!;
       const imageUrl = await generateSceneImage(
         { ...scene, description: newDescription, storyText: newStoryText },
-        characters, params.tone, AGE_STYLE_TAGS[params.ageGroup], editingSliders, useStoryText
+        characters, params.tone as string, AGE_STYLE_TAGS[params.ageGroup], editingSliders, useStoryText
       );
       setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, imageUrl, isGenerating: false } : s));
       incrementUsage();
@@ -186,6 +194,19 @@ const App: React.FC = () => {
       await compressAndDownload(scene.imageUrl!, `page-${i + 1}.jpg`);
       await new Promise(r => setTimeout(r, 400));
     }
+  };
+
+  const downloadStoryScript = () => {
+    const content = scenes
+      .map((scene, idx) => `PAGE ${idx + 1}\n------------------\n${scene.storyText}\n`)
+      .join('\n\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'story-script.txt';
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const isCharacterGenerating = characters.some(c => c.isGenerating);
@@ -287,7 +308,7 @@ const App: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Target Age Group</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Target Audience</label>
                   <select 
                     className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none bg-white" 
                     value={params.ageGroup} 
@@ -301,25 +322,49 @@ const App: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Length (Pages)</label>
-                  <input 
-                    type="number" 
-                    min="5" 
-                    max="40" 
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none" 
-                    value={params.sceneCount} 
-                    onChange={e => setParams({ ...params, sceneCount: parseInt(e.target.value) })} 
-                  />
+                  <div className="flex gap-2">
+                    <select 
+                      className="flex-1 px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none bg-white"
+                      value={params.sceneCount === 'auto' ? 'auto' : 'custom'}
+                      onChange={e => setParams({ ...params, sceneCount: e.target.value === 'auto' ? 'auto' : 20 })}
+                    >
+                      <option value="auto">Auto (Recommended)</option>
+                      <option value="custom">Custom Count</option>
+                    </select>
+                    {params.sceneCount !== 'auto' && (
+                      <input 
+                        type="number" 
+                        min="5" 
+                        max="40" 
+                        className="w-24 px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none" 
+                        value={params.sceneCount} 
+                        onChange={e => setParams({ ...params, sceneCount: parseInt(e.target.value) })} 
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Artistic Tone (e.g. Noir, Whimsical, Cyberpunk)</label>
-                <input 
-                  type="text" 
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none" 
-                  placeholder="Whimsical, Noir, Watercolor, Sci-Fi..." 
-                  value={params.tone} 
-                  onChange={e => setParams({ ...params, tone: e.target.value })} 
-                />
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Artistic Tone</label>
+                <div className="flex gap-2">
+                  <select 
+                    className="flex-1 px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none bg-white"
+                    value={params.tone === 'auto' ? 'auto' : 'custom'}
+                    onChange={e => setParams({ ...params, tone: e.target.value === 'auto' ? 'auto' : '' })}
+                  >
+                    <option value="auto">Auto (Determine from Story)</option>
+                    <option value="custom">Custom Style</option>
+                  </select>
+                  {params.tone !== 'auto' && (
+                    <input 
+                      type="text" 
+                      className="flex-[2] px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-50 outline-none" 
+                      placeholder="Whimsical, Noir, Watercolor..." 
+                      value={params.tone} 
+                      onChange={e => setParams({ ...params, tone: e.target.value })} 
+                    />
+                  )}
+                </div>
               </div>
               <button type="submit" disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-100">
                 Initialize Construction
@@ -338,7 +383,13 @@ const App: React.FC = () => {
         {step === AppStep.Characters && (
           <div className="space-y-10 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
-              <div><h2 className="text-3xl font-bold">Character Design Studio</h2><p className="text-slate-500">Upload a reference photo or generate a unique cast for your book.</p></div>
+              <div>
+                <h2 className="text-3xl font-bold">Character Design Studio</h2>
+                <div className="flex gap-4 mt-1">
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md font-bold uppercase tracking-wider">Style: {params.tone}</span>
+                  <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-bold uppercase tracking-wider">Length: {params.sceneCount} Pages</span>
+                </div>
+              </div>
               <button onClick={generateAllScenes} disabled={loading || characters.some(c => !c.sheetUrl)} className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 shadow-lg shadow-emerald-50">Generate All Book Pages</button>
             </div>
             <div className="space-y-12">
@@ -420,6 +471,13 @@ const App: React.FC = () => {
                 <p className="text-slate-500">Widescreen 16:9 pages optimized for web display.</p>
               </div>
               <div className="flex flex-wrap gap-4">
+                <button 
+                  onClick={downloadStoryScript}
+                  className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold hover:bg-slate-50 transition-all flex items-center gap-3 shadow-xl shadow-slate-100"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  Download Script (.txt)
+                </button>
                 <button 
                   onClick={downloadAll} 
                   disabled={scenes.every(s => !s.imageUrl)}

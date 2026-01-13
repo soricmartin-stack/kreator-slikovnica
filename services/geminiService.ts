@@ -184,7 +184,8 @@ export const generateSceneImage = async (
     }
 
     const primaryPrompt = useStoryText ? scene.storyText : scene.description;
-    const prompt = `HORIZONTAL SMARTPHONE ILLUSTRATION. Optimized for horizontal mobile screen. Scene focus: ${primaryPrompt}. Characters present: ${characterContext}. Style: ${tone}, ${styleTags}.${sliderContext} Consistent character appearances. Professional illustration quality.`;
+    // CRITICAL: Explicitly forbidding text in the image generation prompt to ensure the final book pages are clean for illustration.
+    const prompt = `HORIZONTAL SMARTPHONE ILLUSTRATION. Optimized for horizontal mobile screen. Scene focus: ${primaryPrompt}. Characters present: ${characterContext}. Style: ${tone}, ${styleTags}.${sliderContext} NO TEXT, NO WORDS, NO LETTERING, NO CAPTIONS, NO LOGOS. Consistent character appearances. Professional illustration quality.`;
 
     const response = await ai.models.generateContent({
       model: DEFAULT_MODELS.image,

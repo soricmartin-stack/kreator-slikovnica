@@ -27,6 +27,15 @@ const App: React.FC = () => {
 
   const incrementUsage = () => setSessionUsage(prev => prev + 1);
 
+  const handleReset = () => {
+    if (step !== AppStep.Input && !window.confirm("Are you sure you want to start a new project? Current progress will be lost.")) return;
+    setStep(AppStep.Input);
+    setCharacters([]);
+    setScenes([]);
+    setParams({ story: '', ageGroup: '5-7', tone: 'auto', sceneCount: 'auto' });
+    setErrorMessage(null);
+  };
+
   const handleError = (error: any) => {
     console.error(error);
     const msg = error.message || String(error);
@@ -65,6 +74,21 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAddCharacter = () => {
+    const newId = `char-${Date.now()}`;
+    const newChar: Character = {
+      id: newId,
+      name: "New Character",
+      description: "Enter a brief description of the character...",
+      tweaks: { hair: "", clothing: "", appearance: "", personality: "", accessory: "" }
+    };
+    setCharacters([...characters, newChar]);
+  };
+
+  const handleRemoveCharacter = (charId: string) => {
+    setCharacters(characters.filter(c => c.id !== charId));
+  };
+
   const handleGenerateCharacter = async (charId: string) => {
     const char = characters.find(c => c.id === charId);
     if (!char) return;
@@ -96,6 +120,10 @@ const App: React.FC = () => {
     setCharacters(prev => prev.map(c => c.id === charId ? {
       ...c, tweaks: { ...c.tweaks, [field]: value }
     } : c));
+  };
+
+  const updateCharacterBasic = (charId: string, field: 'name' | 'description', value: string) => {
+    setCharacters(prev => prev.map(c => c.id === charId ? { ...c, [field]: value } : c));
   };
 
   const generateAllScenes = async () => {
@@ -174,8 +202,6 @@ const App: React.FC = () => {
         if (!ctx) return resolve();
         ctx.drawImage(img, 0, 0);
         
-        // Target 95% quality to ensure a substantial file size (min 500KB)
-        // for professional-grade horizontal illustrations, while staying under 2MB.
         canvas.toBlob((blob) => {
           if (blob) {
             const blobUrl = URL.createObjectURL(blob);
@@ -228,8 +254,8 @@ const App: React.FC = () => {
             Engine: {DEFAULT_MODELS.image.toUpperCase()}
           </span>
           <span className="opacity-20">|</span>
-          <span className="flex items-center gap-2">
-            Format: Horizontal Smartphone (16:9)
+          <span className="flex items-center gap-2 text-white/60">
+            Horizontal Smartphone (16:9)
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -246,16 +272,27 @@ const App: React.FC = () => {
       <header className="bg-white border-b border-slate-200 sticky top-6 z-50 transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-100">
+            <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-100 cursor-pointer" onClick={handleReset}>
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.246.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.246.477-4.5 1.253" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold font-handwriting">Picture Book Architect</h1>
+            <h1 className="text-xl font-bold font-handwriting select-none cursor-pointer" onClick={handleReset}>Picture Book Architect</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${loading || isCharacterGenerating ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`}></div>
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-widest">{loading || isCharacterGenerating ? 'Architecting' : 'Ready'}</span>
+          <div className="flex items-center gap-4">
+            {step !== AppStep.Input && (
+              <button 
+                onClick={handleReset}
+                className="text-xs font-bold text-slate-500 hover:text-indigo-600 transition-colors uppercase tracking-widest flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                New Project
+              </button>
+            )}
+            <div className="flex items-center gap-2 pl-4 border-l border-slate-100">
+              <div className={`h-2 w-2 rounded-full ${loading || isCharacterGenerating ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`}></div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-widest">{loading || isCharacterGenerating ? 'Architecting' : 'Ready'}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -272,12 +309,7 @@ const App: React.FC = () => {
             </div>
           </div>
           <h2 className="text-3xl font-bold font-handwriting text-slate-900 mb-2">Sketching the Hero...</h2>
-          <p className="text-slate-500 text-center max-w-sm px-6">We're painting your character from every angle to ensure they look perfect on every page.</p>
-          <div className="mt-8 flex gap-2">
-            <span className="w-2 h-2 rounded-full bg-indigo-200 animate-bounce [animation-delay:-0.3s]"></span>
-            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:-0.15s]"></span>
-            <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce"></span>
-          </div>
+          <p className="text-slate-500 text-center max-w-sm px-6">Ensuring perfect consistency for every angle and expression.</p>
         </div>
       )}
 
@@ -397,11 +429,41 @@ const App: React.FC = () => {
                   <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-bold uppercase tracking-wider">Length: {params.sceneCount} Pages</span>
                 </div>
               </div>
-              <button onClick={generateAllScenes} disabled={loading || characters.some(c => !c.sheetUrl)} className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 shadow-lg shadow-emerald-50">Generate All Book Pages</button>
+              <div className="flex gap-4">
+                <button 
+                  onClick={handleAddCharacter}
+                  className="px-6 py-3 bg-white border-2 border-indigo-600 text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-all flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                  Add Character
+                </button>
+                <button 
+                  onClick={generateAllScenes} 
+                  disabled={loading || characters.length === 0 || characters.some(c => !c.sheetUrl)} 
+                  className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 shadow-lg shadow-emerald-50"
+                >
+                  Generate All Book Pages
+                </button>
+              </div>
             </div>
+            
+            {characters.length === 0 && (
+              <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200">
+                <p className="text-slate-400 font-handwriting italic">No characters detected. Add one to get started!</p>
+              </div>
+            )}
+
             <div className="space-y-12">
               {characters.map((char) => (
-                <div key={char.id} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col lg:flex-row gap-10">
+                <div key={char.id} className="group bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col lg:flex-row gap-10 relative">
+                  <button 
+                    onClick={() => handleRemoveCharacter(char.id)}
+                    className="absolute top-4 right-4 p-2 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                    title="Remove Character"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+
                   <div className="lg:w-1/3 flex flex-col items-center gap-4">
                     <div className="flex gap-4 w-full h-full">
                       <div className="w-1/2 aspect-square bg-slate-50 rounded-2xl overflow-hidden border border-slate-200 relative flex items-center justify-center">
@@ -455,7 +517,20 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   <div className="lg:w-2/3 space-y-6">
-                    <div><h3 className="text-2xl font-bold text-indigo-900 mb-2">{char.name}</h3><p className="text-slate-600 text-sm leading-relaxed">{char.description}</p></div>
+                    <div className="space-y-2">
+                      <input 
+                        className="text-2xl font-bold text-indigo-900 w-full border-b border-transparent hover:border-indigo-100 focus:border-indigo-600 outline-none transition-all"
+                        value={char.name}
+                        onChange={e => updateCharacterBasic(char.id, 'name', e.target.value)}
+                        placeholder="Character Name"
+                      />
+                      <textarea 
+                        className="text-slate-600 text-sm leading-relaxed w-full min-h-[60px] resize-none border-b border-transparent hover:border-indigo-50 focus:border-indigo-600 outline-none transition-all"
+                        value={char.description}
+                        onChange={e => updateCharacterBasic(char.id, 'description', e.target.value)}
+                        placeholder="Character description..."
+                      />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
                       <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Hair</label><input className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-100 transition-all" placeholder="Curly brown..." value={char.tweaks.hair} onChange={e => updateCharacterTweaks(char.id, 'hair', e.target.value)} /></div>
                       <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Clothing</label><input className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-100 transition-all" placeholder="Blue dress..." value={char.tweaks.clothing} onChange={e => updateCharacterTweaks(char.id, 'clothing', e.target.value)} /></div>
@@ -475,7 +550,7 @@ const App: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>
                 <h2 className="text-3xl font-bold font-handwriting">Book Storyboard</h2>
-                <p className="text-slate-500">Horizontal Smartphone layout optimized for 16:9 displays.</p>
+                <p className="text-slate-500">Illustration sequence (no text rendered in images).</p>
               </div>
               <div className="flex flex-wrap gap-4">
                 <button 
@@ -493,7 +568,7 @@ const App: React.FC = () => {
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                   {allImagesReady ? 'Download Full Book (Optimized)' : 'Download Available Pages'}
                 </button>
-                <button onClick={() => window.location.reload()} className="px-6 py-3 bg-slate-200 text-slate-700 rounded-2xl font-bold hover:bg-slate-300 transition-all">Start Over</button>
+                <button onClick={handleReset} className="px-6 py-3 bg-slate-200 text-slate-700 rounded-2xl font-bold hover:bg-slate-300 transition-all">Start Over</button>
               </div>
             </div>
 
@@ -504,7 +579,7 @@ const App: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="font-bold text-emerald-900">Your Masterpiece is Ready!</h4>
-                  <p className="text-sm text-emerald-700">All {scenes.length} pages have been illustrated and optimized (less than 2MB per page).</p>
+                  <p className="text-sm text-emerald-700">All {scenes.length} pages have been illustrated and optimized (min. 500KB per page).</p>
                 </div>
               </div>
             )}
@@ -563,7 +638,7 @@ const App: React.FC = () => {
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Scene {activeEditingScene.id} Studio</h3>
-                <p className="text-xs text-slate-500">Fine-tune for horizontal view.</p>
+                <p className="text-xs text-slate-500">Fine-tune without embedded text.</p>
               </div>
               <button onClick={() => setActiveEditingScene(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-full transition-all">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
